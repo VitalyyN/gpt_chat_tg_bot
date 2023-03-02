@@ -1,42 +1,67 @@
+from dotenv import load_dotenv
 import telebot
 import openai
-from dotenv import load_dotenv
 import os
-
+import time
 
 load_dotenv()
 
-# Устанавливаем токен бота из переменной окружения
-bot_token = os.getenv('BOT_TOKEN')
+# Подключаемся к Telegram боту
+for i in range(3):
+    try:
+        bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
+        break
+    except telebot.apihelper.ApiException as e:
+        print(f"Не удалось подключиться к Telegram API. Попытка {i + 1}/3...")
+        time.sleep(3)
+else:
+    print("Не удалось подключиться к Telegram API. Проверьте токен и подключение к сети.")
+    exit(1)
 
-# Устанавливаем токен API OpenAI из переменной окружения
+# Подключаемся к OpenAI API
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Создаем экземпляр бота
-bot = telebot.TeleBot(bot_token)
 
-
-# Обрабатываем команду /start
+# Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Привет! Я бот, готовый помочь вам с задачами!")
+    bot.reply_to(message, "Привет! Я готов помочь тебе с генерацией текста. Напиши мне что-нибудь.")
 
 
-# Обрабатываем текстовые сообщения
+# Обработчик текстовых сообщений
 @bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    # Используем API OpenAI для получения ответа на сообщение
-    response = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt=message.text,
-        max_tokens=1024,
-        n=1,
-        stop=None,
-        temperature=0.5,
-    )
+def generate_text(message):
+    # Получаем идентификатор пользователя, чтобы поддерживать работу с несколькими пользователями
+    user_id = message.from_user.id
 
-    # Отправляем ответ пользователю
-    bot.reply_to(message, response.choices[0].text)
+    # Получаем текст запроса от пользователя
+    prompt_text = message.text
+
+    for i in range(3):
+        try:
+            # Генерируем ответ на основе запроса с помощью OpenAI API
+            response = openai.Completion.create(
+                engine="text-davinci-003",
+                prompt=prompt_text,
+                max_tokens=2024,
+                n=1,
+                stop=None,
+                temperature=0.5,
+            )
+
+            # Получаем сгенерированный текст из ответа OpenAI API
+            generated_text = response.choices[0].text
+
+            # Отправляем сгенерированный текст пользователю
+            bot.send_message(user_id, generated_text)
+
+            break  # Если всё хорошо, выходим из цикла
+
+        except Exception as e:
+            print(f"Произошла ошибка при генерации текста. Попытка {i + 1}/3...")
+            time.sleep(3)
+    else:
+        bot.send_message(user_id, "Произошла ошибка при генерации текста. Попробуйте еще раз позже.")
 
 
 # Запускаем бота
